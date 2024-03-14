@@ -1,0 +1,177 @@
+---
+title: "Predicting Low Birth Weight"
+author: "Isabel Berdecio"
+date: "2023-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(e1071)
+library(randomForest)
+library(tree)
+library(reshape2)
+library(ggplot2)
+library(ROCR)
+library(pROC)
+
+#Data Loading
+
+#Primary Response, Low
+#Predictors: Race, Age, Smoking Status, Last weight at menstrual period, preterm labor, hypertension, uterine irratbility, #physicians visits in the last year
+
+setwd("C:/Users/iberd/OneDrive/Desktop/Graduate/Spring 2023/SML/SML")
+lowbwt <- read.csv("lowbwt_final.csv")
+lowbwt2 <- read.csv("lowbwt_final.csv")
+lowbwt3 <- read.csv("lowbwt_final.csv")
+View(lowbwt3)
+```
+
+```{r}
+#target variable
+
+lowbwt <- lowbwt %>%
+  mutate(lowbirth = ifelse(low == "< 2500 g", 1, 0))
+View(lowbwt)
+
+lowbwt2 <- lowbwt2 %>%
+  mutate(lowbirth = ifelse(low == "< 2500 g", 1, 0))
+
+lowbwt3 <- lowbwt3 %>%
+  mutate(lowbirth = ifelse(low == "< 2500 g", 1, 0))
+
+
+predictors <- c("age", "lwt", "race", "smoke", "ptl", "ht", "ui")
+response <- "lowbirth"
+
+
+# create training and testing datasets
+set.seed(123) # for reproducibility
+trainIndex <- createDataPartition(lowbwt$lowbirth, p = 0.7, list = FALSE)
+training <- lowbwt[trainIndex, ]
+testing <- lowbwt[-trainIndex, ]
+
+
+# create training and testing datasets
+set.seed(123) # for reproducibility
+trainIndex2 <- createDataPartition(lowbwt2$lowbirth, p = 0.7, list = FALSE)
+training2 <- lowbwt2[trainIndex, ]
+testing2 <- lowbwt2[-trainIndex, ]
+
+# create training and testing datasets
+set.seed(123) # for reproducibility
+trainIndex3 <- createDataPartition(lowbwt3$lowbirth, p = 0.7, list = FALSE)
+training3 <- lowbwt3[trainIndex, ]
+testing3 <- lowbwt3[-trainIndex, ]
+
+```
+
+```{r}
+# Fit logistic regression model with 10-fold cross-validation
+set.seed(1234)
+
+training$lowbirth <- factor(training$lowbirth, levels = c(0, 1), labels = c("No", "Yes"))
+
+cv_results <- train(lowbirth ~ age + lwt + race + smoke + ptl + ht + ui, data = training, method = "glm", trControl = trainControl(method = "cv", number = 10, classProbs = TRUE), family = binomial(link = "logit"))
+
+print(cv_results)
+
+#Evaluating performance on the test set
+# Predict on test set
+testing$lowbirth <- factor(testing$lowbirth, levels = c(0, 1), labels = c("No", "Yes"))
+logit_pred <- predict(cv_results, newdata = testing)
+
+# Generate confusion matrix and performance metrics
+confusionMatrix(data = logit_pred, reference = testing$lowbirth)
+
+var_implr <- varImp(cv_results)
+plot(var_implr)
+
+# Predict probabilities on test set
+logit_prob <- predict(cv_results, newdata = testing, type = "prob")
+
+# Create prediction object
+logit_pred_obj <- prediction(logit_prob[,2], testing$lowbirth)
+
+# Create performance object
+logit_perf <- performance(logit_pred_obj, measure = "tpr", x.measure = "fpr")
+
+# Plot ROC curve
+plot(logit_perf, main = "ROC Curve for Logistic Regression Model")
+
+
+```
+
+```{r}
+
+#Randome Forrest Classifier
+set.seed(1234)
+training3$lowbirth <- factor(training3$lowbirth, levels = c(0, 1), labels = c("No", "Yes"))
+testing3$lowbirth <- factor(testing3$lowbirth, levels = c(0, 1), labels = c("No", "Yes"))
+
+# Define the tuning grid
+tuneGrid <- expand.grid(mtry = 1:10)
+
+#Define 10-fold CV
+rfcv <- trainControl(method = "cv", number = 10)
+
+# Fit the random forest classification model using 10-fold CV and tuning grid
+rf_fit <- train(lowbirth ~ age + lwt + race + smoke + ptl + ht + ui, data = training3, method = "rf",
+trControl = rfcv, tuneGrid = tuneGrid, ntree = 500)
+rf_fit
+
+# Make predictions on the test set
+rf_pred <- predict(rf_model, newdata = testing3)
+
+rf_pred
+
+rf_pred_class <- ifelse(rf_pred > 0.5, "Yes", "No")
+rf_pred_class_factor <- factor(rf_pred_class, levels = c("No", "Yes"))
+
+# Create confusion matrix
+confusionMatrix(rf_pred_class_factor, testing3$lowbirth)
+
+#Variable of Importance
+var_imprf <- varImp(rf_fit)
+plot(var_imprf)
+
+# Plot ROC curve
+rf_prob <- predict(rf_fit, newdata = testing3, type = "prob")
+rf_pred_obj <- prediction(rf_prob[, 2], testing3$lowbirth)
+rf_perf <- performance(rf_pred_obj, "tpr", "fpr")
+plot(rf_perf, main = "Random Forest ROC Curve")
+```
+
+```{r}
+#Naive-Bayes Classifier
+
+
+ctrlnb <- trainControl(method = "cv", number = 10)
+
+# define the tuning grid
+tuneGridnb <- data.frame(laplace = 0, usekernel = FALSE, adjust = FALSE)
+
+nb_model2 <- train(lowbirth ~ age + lwt + race + smoke + ptl + ht + ui, data = training3, method = "naive_bayes", trControl = ctrlnb, tuneGrid = tuneGridnb)
+
+# print the model summary
+print(nb_model2)
+
+predictionsnb <- predict(nb_model2, newdata = testing3)
+
+print(nb_model2)
+confusionMatrix(predictionsnb, testing3$lowbirth)
+
+
+
+```
+
+
